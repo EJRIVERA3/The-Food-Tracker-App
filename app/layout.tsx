@@ -24,7 +24,11 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
-    apple: "/favicon.svg",
+    /* Must be a PNG. iOS never reads the manifest, and its apple-touch-icon
+       link does not accept SVG — so pointing this at favicon.svg meant Add
+       to Home Screen fell back to a screenshot of whatever happened to be on
+       screen, which reads as a bug rather than an icon. */
+    apple: "/icons/apple-touch-icon.png",
   },
 };
 
