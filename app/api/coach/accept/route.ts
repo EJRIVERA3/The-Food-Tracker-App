@@ -11,9 +11,11 @@
 import {
   assertInviteCode,
   assertUserKey,
+  enforceRateLimit,
   ensureCoachSchema,
   getCoachDb,
   HttpError,
+  requestIp,
   toErrorResponse,
   type CoachLinkRow,
 } from "../../../coach-links";
@@ -22,6 +24,12 @@ export async function POST(request: Request) {
   try {
     const db = getCoachDb();
     await ensureCoachSchema(db);
+
+    /* Unauthenticated by necessity — the person accepting has no account —
+       so limit by IP before touching the code. 10 attempts per 10 minutes
+       is generous for a human typing a code off a screen, and useless for
+       grinding an 8-character keyspace. */
+    await enforceRateLimit(db, `accept:${requestIp(request)}`, 10, 600);
 
     const body = (await request.json()) as { code?: unknown; userKey?: unknown; label?: unknown };
     const code = assertInviteCode(body.code);

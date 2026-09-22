@@ -82,11 +82,12 @@ Set hosted runtime values in the hosting provider, never in Git.
 
 ## Supabase Setup
 
-Create a Supabase project, then run both migrations in order:
+Create a Supabase project, then run the migrations in order:
 
 ```text
 supabase/migrations/0001_diet_cloud.sql
 supabase/migrations/0002_coach_links.sql
+supabase/migrations/0003_rls_policies.sql
 ```
 
 Then set these runtime environment variables:
@@ -100,8 +101,29 @@ BACKUP_DRIVER=supabase
 Legacy Supabase projects can use `SUPABASE_SERVICE_ROLE_KEY` instead of
 `SUPABASE_SECRET_KEY`. Keep secret/service keys server-side only.
 
-The migrations enable RLS and add no public policies. The app writes through the
-server API route, so the database is never exposed to the browser.
+## What actually protects the data
+
+Be clear-eyed about this, because the setup looks stricter than it is.
+
+RLS is enabled on every table, but the API connects with the **service role
+key, which bypasses RLS entirely**. The policies in `0003_rls_policies.sql` are
+therefore preparation, not protection — they start applying only once the app
+authenticates end users and passes their JWT instead. That needs real accounts
+(Supabase Auth); today identity is a sync key, so `auth.uid()` means nothing.
+The migration's own header explains this at length.
+
+So in practice the data is protected by two secrets:
+
+- **The service/secret key**, which must never leave the server.
+- **Each user's sync key** — a 192-bit bearer credential that grants full read
+  and write over that user's data. It travels in the `X-Sync-Key` header, never
+  a query string, since query strings land in proxy logs, server access logs,
+  browser history and `Referer`. Anyone holding it has that user's account.
+
+The browser never talks to the database directly; every read and write goes
+through the server API route.
+
+Local secrets for `wrangler dev` belong in `.dev.vars`, which is gitignored.
 
 ## Git
 

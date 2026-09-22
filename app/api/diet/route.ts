@@ -155,10 +155,28 @@ function toErrorResponse(error: unknown, status = 500) {
   return Response.json({ error: message }, { status });
 }
 
+/**
+ * The sync key is a bearer credential: whoever holds it can read and write
+ * everything under it. It therefore travels in a header, never a query
+ * string — query strings are captured verbatim by proxy logs, server access
+ * logs, browser history and Referer headers.
+ *
+ * The query parameter is deliberately NOT accepted as a fallback. This is a
+ * web app, so every client loads the current bundle on next visit; there is
+ * no installed version left behind to break.
+ */
+function readSyncKey(request: Request): string {
+  const header =
+    request.headers.get("x-sync-key") ||
+    (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+
+  return assertUserKey(header);
+}
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
-    const userKey = assertUserKey(url.searchParams.get("userKey"));
+    const userKey = readSyncKey(request);
     const start = url.searchParams.get("start");
     const end = url.searchParams.get("end");
     const hasRange = start && end && DATE_RE.test(start) && DATE_RE.test(end);

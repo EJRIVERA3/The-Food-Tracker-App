@@ -255,6 +255,9 @@ const BOOT_DATE = "2026-06-13";
 /** How close to its share of the day's targets a meal counts as "on target". */
 const MEAL_TARGET_TOLERANCE = 0.9;
 
+/** Pounds the weight chart always spans, so daily noise does not look dramatic. */
+const WEIGHT_CHART_MIN_SPAN = 4;
+
 const EMPTY_TOTALS: Totals = {
   calories: 0,
   protein: 0,
@@ -1136,7 +1139,9 @@ export default function DietApp() {
     setSyncStatus("Restoring from cloud");
 
     try {
-      const response = await fetch(`/api/diet?userKey=${encodeURIComponent(key)}`);
+      /* Sync key goes in a header, never the URL: query strings end up in
+         proxy logs, server access logs, browser history and Referer. */
+      const response = await fetch("/api/diet", { headers: { "X-Sync-Key": key } });
       if (!response.ok) {
         throw new Error("Cloud restore failed");
       }
@@ -3125,6 +3130,81 @@ export default function DietApp() {
     );
   }
 
+  /**
+   * What actually happened in a week: only days that have already passed and
+   * have food logged count, so an unlogged week reads as unknown rather than
+   * as success.
+   */
+  function getWeekSummary(startValue: string) {
+    const dates = Array.from({ length: 7 }, (_, index) => addDays(startValue, index));
+    const elapsed = dates.filter((date) => date <= today);
+    const logged = elapsed
+      .map((date) => days[date])
+      .filter((day): day is DayLog => Boolean(day) && getLoggedTotals(day).calories > 0);
+
+    const loggedTotal = logged.reduce((sum, day) => sum + getLoggedTotals(day).calories, 0);
+    const targetTotal = logged.reduce((sum, day) => sum + Number(day.calories || 0), 0);
+    const weekWeighIns = dates
+      .map((date) => days[date])
+      .filter((day) => day && typeof day.weighIn.weight === "number" && day.weighIn.weight);
+
+    return {
+      elapsedDays: elapsed.length,
+      loggedDays: logged.length,
+      avgLogged: logged.length ? Math.round(loggedTotal / logged.length) : 0,
+      avgTarget: logged.length ? Math.round(targetTotal / logged.length) : 0,
+      latestWeight: weekWeighIns.at(-1)?.weighIn.weight ?? null,
+    };
+  }
+
+  function renderWeekAdherence(summary: ReturnType<typeof getWeekSummary>) {
+    if (summary.loggedDays === 0) {
+      return (
+        <div className="notice">
+          <Info size={28} color="#2c95b8" />
+          <div>
+            <strong>Nothing logged yet</strong>
+            <p style={{ margin: 0 }}>
+              Log your meals and this will show how your week is tracking against your targets.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    const gap = summary.avgLogged - summary.avgTarget;
+    const dayCount = `${summary.loggedDays} of ${summary.elapsedDays} ${
+      summary.elapsedDays === 1 ? "day" : "days"
+    } logged`;
+
+    if (Math.abs(gap) <= summary.avgTarget * 0.05) {
+      return (
+        <div className="green-note">
+          <CheckCircle2 size={28} color="var(--ok)" />
+          <div>
+            <strong>On track</strong>
+            <p style={{ margin: 0 }}>
+              Averaging {summary.avgLogged} cal against a {summary.avgTarget} target. {dayCount}.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="notice">
+        <Info size={28} color="#2c95b8" />
+        <div>
+          <strong>{gap > 0 ? "Running over" : "Running under"}</strong>
+          <p style={{ margin: 0 }}>
+            Averaging {summary.avgLogged} cal against a {summary.avgTarget} target,{" "}
+            {Math.abs(gap)} {gap > 0 ? "over" : "under"} a day. {dayCount}.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   function renderProgress() {
     const weighIns = Object.values(days)
       .filter((day) => day.weighIn.weight)
@@ -3133,6 +3213,7 @@ export default function DietApp() {
     const change = latest - profile.startWeight;
     const weekStartValue = weekStart(selectedDate);
     const weekEndValue = addDays(weekStartValue, 6);
+    const weekSummary = getWeekSummary(weekStartValue);
 
     return (
       <>
@@ -3172,17 +3253,11 @@ export default function DietApp() {
           </div>
 
           <h2 className="section-title">This week</h2>
-          <div className="green-note">
-            <CheckCircle2 size={28} color="var(--ok)" />
-            <div>
-              <strong>Great job</strong>
-              <p style={{ margin: 0 }}>You are trending to hit the calories you committed to.</p>
-            </div>
-          </div>
+          {renderWeekAdherence(weekSummary)}
 
           <div className="card" style={{ padding: 16 }}>
             <div className="split-row" style={{ justifyContent: "space-between" }}>
-              <strong>W-1</strong>
+              <strong>W-{dietWeekNumber(weekStartValue, profile.startDate)}</strong>
               <strong>
                 {formatShortDate(weekStartValue)} - {formatShortDate(weekEndValue)}
               </strong>
@@ -3192,15 +3267,17 @@ export default function DietApp() {
             </div>
             <div className="split-row" style={{ justifyContent: "space-between", marginTop: 16 }}>
               <span className="muted">
-                Calories <strong className="mono">{currentDay.calories}</strong>
+                Avg logged{" "}
+                <strong className="mono">{weekSummary.loggedDays ? weekSummary.avgLogged : "-"}</strong>
               </span>
               <span className="muted">
-                Target <strong className="mono">{profile.calories}</strong>
+                Avg target{" "}
+                <strong className="mono">{weekSummary.loggedDays ? weekSummary.avgTarget : "-"}</strong>
               </span>
             </div>
             <div style={{ marginTop: 14 }}>
-              <span className="muted">Weight </span>
-              <strong>{currentDay.weighIn.weight ? `${currentDay.weighIn.weight} lbs` : "- lbs"}</strong>
+              <span className="muted">Latest weigh-in this week </span>
+              <strong>{weekSummary.latestWeight ? `${weekSummary.latestWeight} lbs` : "- lbs"}</strong>
             </div>
           </div>
 
@@ -3214,20 +3291,102 @@ export default function DietApp() {
 
   function renderWeightChart(weighIns: DayLog[]) {
     const values = weighIns.map((day) => day.weighIn.weight ?? profile.startWeight);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const range = Math.max(1, max - min);
-    const points = values
-      .map((weight, index) => {
-        const x = 20 + (index / Math.max(1, values.length - 1)) * 260;
-        const y = 150 - ((weight - min) / range) * 110;
-        return `${x},${y}`;
-      })
-      .join(" ");
+    const dataMin = Math.min(...values);
+    const dataMax = Math.max(...values);
+
+    // Scaling straight to min..max makes half a pound of daily noise fill the
+    // whole chart. Hold a minimum span so small changes read as small.
+    const middle = (dataMin + dataMax) / 2;
+    const halfSpan = Math.max(((dataMax - dataMin) / 2) * 1.3, WEIGHT_CHART_MIN_SPAN / 2);
+    const domainMin = middle - halfSpan;
+    const domainMax = middle + halfSpan;
+
+    const left = 46;
+    const right = 310;
+    const top = 16;
+    const bottom = 168;
+    const toX = (index: number) =>
+      left + (index / Math.max(1, values.length - 1)) * (right - left);
+    const toY = (weight: number) =>
+      bottom - ((weight - domainMin) / (domainMax - domainMin)) * (bottom - top);
+
+    const ticks = [domainMax, middle, domainMin];
+    const goalInRange = profile.goalWeight >= domainMin && profile.goalWeight <= domainMax;
+    const first = values[0];
+    const last = values[values.length - 1];
+    const net = last - first;
 
     return (
-      <svg viewBox="0 0 300 180" role="img" aria-label="Weight trend" style={{ width: "100%" }}>
-        <polyline fill="none" points={points} stroke="#cc1f35" strokeWidth="6" strokeLinecap="round" />
+      <svg
+        viewBox="0 0 320 200"
+        role="img"
+        aria-label={`Weight from ${first} to ${last} pounds across ${values.length} weigh-ins, a change of ${net.toFixed(1)} pounds`}
+        style={{ width: "100%" }}
+      >
+        {ticks.map((tick) => (
+          <g key={tick}>
+            <line
+              x1={left}
+              y1={toY(tick)}
+              x2={right}
+              y2={toY(tick)}
+              stroke="var(--line)"
+              strokeWidth="1"
+            />
+            <text
+              x={left - 8}
+              y={toY(tick) + 4}
+              textAnchor="end"
+              fontSize="11"
+              fill="var(--muted)"
+            >
+              {tick.toFixed(1)}
+            </text>
+          </g>
+        ))}
+
+        {goalInRange && (
+          <>
+            <line
+              x1={left}
+              y1={toY(profile.goalWeight)}
+              x2={right}
+              y2={toY(profile.goalWeight)}
+              stroke="var(--ok)"
+              strokeWidth="2"
+              strokeDasharray="5 4"
+            />
+            <text x={right} y={toY(profile.goalWeight) - 6} textAnchor="end" fontSize="11" fill="var(--ok)">
+              Goal {profile.goalWeight}
+            </text>
+          </>
+        )}
+
+        <polyline
+          fill="none"
+          points={values.map((weight, index) => `${toX(index)},${toY(weight)}`).join(" ")}
+          stroke="var(--red)"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {values.map((weight, index) => (
+          <circle
+            key={weighIns[index].date}
+            cx={toX(index)}
+            cy={toY(weight)}
+            r="4"
+            fill="var(--red)"
+          />
+        ))}
+
+        <text x={left} y={190} fontSize="11" fill="var(--muted)">
+          {formatShortDate(weighIns[0].date)}
+        </text>
+        <text x={right} y={190} textAnchor="end" fontSize="11" fill="var(--muted)">
+          {formatShortDate(weighIns[weighIns.length - 1].date)}
+        </text>
       </svg>
     );
   }

@@ -144,8 +144,61 @@ export function assertInviteCode(value: unknown): string {
   return normalised;
 }
 
+/**
+ * Fixed-window rate limit, backed by D1.
+ *
+ * Exists mainly for /api/coach/accept: an invite code is 8 characters from a
+ * 31-character alphabet. That is fine against blind guessing and poor against
+ * sustained automation, and the endpoint is deliberately unauthenticated
+ * because the client accepting an invite has no account yet. Limiting by IP
+ * turns "grind until something lands" into "give up".
+ */
+export async function enforceRateLimit(
+  db: D1Database,
+  key: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - (now % windowSeconds);
+
+  /* Single statement, so two concurrent requests cannot both read the old
+     value and each write 1. */
+  const row = await db
+    .prepare(
+      `INSERT INTO coach_rate_limits (key, window_start, count)
+       VALUES (?, ?, 1)
+       ON CONFLICT(key) DO UPDATE SET
+         count = CASE WHEN coach_rate_limits.window_start = excluded.window_start
+                      THEN coach_rate_limits.count + 1 ELSE 1 END,
+         window_start = excluded.window_start
+       RETURNING count`,
+    )
+    .bind(key, windowStart)
+    .first<{ count: number }>();
+
+  if (Number(row?.count ?? 1) > limit) {
+    throw new HttpError(429, "Too many attempts. Wait a few minutes and try again.");
+  }
+}
+
+export function requestIp(request: Request): string {
+  return (
+    request.headers.get("cf-connecting-ip") ||
+    request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    "unknown"
+  );
+}
+
 export async function ensureCoachSchema(db: D1Database): Promise<void> {
   await db.batch([
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS coach_rate_limits (
+        key TEXT PRIMARY KEY,
+        window_start INTEGER NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0
+      )`,
+    ),
     db.prepare(
       `CREATE TABLE IF NOT EXISTS coach_links (
         id TEXT PRIMARY KEY,

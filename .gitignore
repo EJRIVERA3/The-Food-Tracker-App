@@ -41,3 +41,7 @@ next-env.d.ts
 /.wrangler/
 /work/
 /outputs/
+
+# Local secrets for wrangler dev (COACH_TOKEN etc) - never commit
+.dev.vars
+.dev.vars.*
