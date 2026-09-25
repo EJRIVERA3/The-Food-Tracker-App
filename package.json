@@ -10,7 +10,7 @@
     "build": "vinext build",
     "build:static": "vite build --config vite.static.config.ts",
     "preview:static": "vite preview --config vite.static.config.ts",
-    "deploy:cf": "npm run build && node scripts/patch-d1.mjs && wrangler deploy",
+    "deploy:cf": "npm run build && node scripts/patch-deploy-config.mjs && wrangler deploy",
     "start": "vinext start",
     "test": "node --test",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern dist-static --ignore-pattern .next",
