@@ -52,7 +52,7 @@ if (existsSync(routesPath)) {
 
     // Set EXPLICITLY. Defining routes silently flips workers_dev's default to
     // false, which takes the *.workers.dev hostname from serving to 404 on the
-    // next deploy. That happened on the IRONCLAD side and was only caught by
+    // next deploy. That happened on the Enlightened Lifter side and was only caught by
     // checking the old URL afterwards. It is the fallback if anything is wrong
     // with the domain, so it stays on unless deliberately turned off.
     cfg.workers_dev = routes.workers_dev ?? true;
