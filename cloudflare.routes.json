@@ -1,5 +1,7 @@
 {
-  "custom_domains": ["food.enlightenedlifter.us"],
-  "workers_dev": true,
+  "custom_domains": [
+    "food.enlightenedlifter.us"
+  ],
+  "workers_dev": false,
   "preview_urls": false
 }
