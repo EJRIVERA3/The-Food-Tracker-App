@@ -1,0 +1,19 @@
+# Line endings.
+#
+# Without this, a clone on Windows checks out CRLF. That is harmless for
+# most of the tree and fatal for a shell script: `#!/bin/sh` followed by a
+# carriage return fails with "bad interpreter: /bin/sh^M", and the git
+# hooks in scripts/hooks/ are shell scripts whose whole job is to survive
+# a fresh clone and be reinstalled. They were committed from a Windows
+# checkout, which is where this was noticed.
+#
+# The Enlightened Lifter repo has carried `* text=auto eol=lf` for a while;
+# this one had no .gitattributes at all.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.docx binary
