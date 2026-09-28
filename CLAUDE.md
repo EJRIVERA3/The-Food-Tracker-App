@@ -4,10 +4,40 @@
 This repo and the Enlightened Lifter site must be on GitHub before a piece of work is
 called finished. A `post-commit` hook in `.git/hooks/` pushes automatically
 after every commit; if it reports a failure, run `git push origin <branch>`.
-Hooks are not versioned — after a fresh clone, reinstall it (the hook body
-is in the Enlightened Lifter repo's DEPLOY.md, "Backups").
+Hooks are not cloned with a repo, so after a fresh clone reinstall them
+with `sh scripts/install-hooks.sh` — the bodies are versioned in
+`scripts/hooks/`.
 
 The default branch is `codex/diet-cloud-app`. Production deploys from it.
+
+## Look at GitHub before you push
+Every push is preceded by a check of what is already on the remote. Not a
+glance at `git status` — that only knows what this machine knows.
+
+```bash
+git fetch origin
+git log --oneline HEAD..origin/codex/diet-cloud-app   # what you have not seen
+git diff --stat origin/codex/diet-cloud-app...HEAD    # what you are sending
+```
+
+Two questions, both answered before pushing:
+
+1. **Is anything waiting?** If the first command prints anything, stop.
+   Read it, `git pull --rebase`, then push.
+2. **Does your change undo any of it?** Check whether the files you are
+   sending are files that arrived recently. Building on someone's work is
+   fine; replacing it is not, unless **Emilio has specifically said so**.
+
+Both assistants commit as EJRIVERA3, so nothing can tell whose work is
+whose by looking. The check is the only thing standing between "I edited
+the version I had" and a silent revert of the other one's afternoon.
+
+If the answer really is "yes, overwrite it", say so to Emilio first and
+get a yes back. Then `git push --no-verify`.
+
+A `pre-push` hook enforces the first question — it fetches, refuses the
+push when origin is ahead, and names the commits. The second question is
+judgement, and the hook only shows you which files overlap.
 
 ## Two assistants work on these projects. Claude deploys; ChatGPT does not.
 Emilio works on the Enlightened Lifter site with ChatGPT as well as

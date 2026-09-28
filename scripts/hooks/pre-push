@@ -1,0 +1,73 @@
+#!/bin/sh
+# Look at GitHub before pushing.
+#
+# Two assistants commit to these repos. The post-commit hook pushes
+# immediately, which is what keeps GitHub current, but it also means a
+# push goes out before anyone has looked at what arrived in the meantime.
+# This hook is that look.
+#
+# It refuses the push when origin has commits this checkout has not seen,
+# and prints them. Git would reject that push anyway as a non-fast-forward;
+# the point is to say WHAT arrived, early enough to read it, rather than
+# leaving "rejected" as the whole message.
+#
+# It also prints the files about to be pushed next to the files that
+# arrived recently, so an overlap is visible before it becomes a revert.
+# It does not try to judge the overlap: same author name on both sides
+# means nothing here can tell whose work is whose. A human decides.
+#
+# Never blocks for being offline. `git push --no-verify` skips it entirely,
+# which is the escape hatch when the overwrite is intended.
+
+remote="$1"
+[ -z "$remote" ] && remote=origin
+
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+[ -z "$branch" ] || [ "$branch" = "HEAD" ] && exit 0
+
+# Offline, or no such remote: say so and get out of the way. A hook that
+# stops work on a train is a hook that gets deleted.
+if ! git fetch --quiet "$remote" 2>/dev/null; then
+  echo "pre-push: could not reach $remote — pushing without checking it." >&2
+  exit 0
+fi
+
+upstream="$remote/$branch"
+git rev-parse --verify --quiet "$upstream" >/dev/null || exit 0   # new branch
+
+behind="$(git rev-list --count "HEAD..$upstream" 2>/dev/null)"
+[ -z "$behind" ] && behind=0
+
+if [ "$behind" -gt 0 ]; then
+  echo "" >&2
+  echo "pre-push: REFUSED — $upstream has $behind commit(s) this checkout does not have:" >&2
+  git log --oneline --no-decorate "HEAD..$upstream" | sed "s/^/    /" >&2
+  echo "" >&2
+  echo "  Read those first, then: git pull --rebase" >&2
+  echo "  Check your change does not undo them before pushing again." >&2
+  echo "  If overwriting them is intended and Emilio has said so: git push --no-verify" >&2
+  echo "" >&2
+  exit 1
+fi
+
+# Up to date with the remote. Show the overlap between what is about to go
+# out and what came in recently, so a silent revert has to get past a human
+# who has been shown both halves.
+outgoing="$(git diff --name-only "$upstream..HEAD" 2>/dev/null)"
+[ -z "$outgoing" ] && exit 0
+
+recent="$(git log --since='3 days ago' --name-only --format= "$upstream" 2>/dev/null | sort -u)"
+[ -z "$recent" ] && exit 0
+
+overlap="$(printf '%s\n' "$outgoing" | sort -u | comm -12 - "$(printf '%s\n' "$recent" > /tmp/.prepush.$$ && echo /tmp/.prepush.$$)" 2>/dev/null)"
+rm -f /tmp/.prepush.$$
+
+if [ -n "$overlap" ]; then
+  echo "" >&2
+  echo "pre-push: these files changed on $upstream in the last 3 days and you are pushing them too:" >&2
+  printf '%s\n' "$overlap" | sed "s/^/    /" >&2
+  echo "  Not a problem by itself — just make sure you built on that work rather than over it." >&2
+  echo "" >&2
+fi
+
+exit 0

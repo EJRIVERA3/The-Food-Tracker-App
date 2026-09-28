@@ -1,0 +1,17 @@
+#!/bin/sh
+# Auto-push after every commit, so GitHub is never behind this machine.
+#
+# Deliberately never fails the commit: offline or a rejected push just prints
+# a warning and leaves the commit in place to be pushed later. The commit is
+# the thing that must not be lost; the push can be retried.
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+[ -z "$branch" ] || [ "$branch" = "HEAD" ] && exit 0      # detached HEAD: nothing to push
+git remote get-url origin >/dev/null 2>&1 || exit 0          # no remote yet: nothing to push to
+if git push --quiet origin "$branch" 2>/tmp/.autopush.$$; then
+  echo "auto-push: $branch -> origin"
+else
+  echo "auto-push: FAILED to push $branch (commit is safe locally; run: git push origin $branch)" >&2
+  sed "s/^/  /" /tmp/.autopush.$$ >&2
+fi
+rm -f /tmp/.autopush.$$
+exit 0
