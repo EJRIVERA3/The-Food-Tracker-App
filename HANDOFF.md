@@ -83,3 +83,15 @@ per-device. This is why a static build is viable.
 - `df290b6` Add GitHub Pages + Cloudflare deployment
 - `4549051` Fix Cloudflare deploy: patch D1 binding into vinext config
 - `f33c0b3` Trigger Pages deploy with GitHub Actions source
+
+---
+
+## Status update, 2026-10-05
+
+The deployment above is outdated in three ways:
+
+- **Domain:** the app now serves from `food.enlightenedlifter.us`; the workers.dev hostname was turned off on 2026-09-25.
+- **Security:** it had no security headers until 2026-09-28. They are added by a Worker wrapper (`server/security-headers.mjs`, wired in by `scripts/patch-deploy-config.mjs`). A deploy from a tree older than that commit would drop them silently, so `git pull` immediately before `npm run deploy:cf`. CSP still allows `'unsafe-inline'` scripts (needs a per-request nonce).
+- **Priorities:** coach features are parked on purpose (owner, 2026-09-09). Work on the single-user app: the inert Help and End Current Diet items and the hardcoded Progress copy.
+
+Added since 2026-09-08: nutrition per food and Settings, custom food library, saved meals, honest weekly progress, readable weight chart, sync key moved to the `X-Sync-Key` header with rate limits, real app icons for iPhone. See the master handoff in the Enlightened Lifter repo at `docs/HANDOFF.md` for the cross-project picture and working conventions.
