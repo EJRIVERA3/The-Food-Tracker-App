@@ -66,3 +66,17 @@ for (const [name, svg, size] of targets) {
     .toFile(`${OUT}/${name}`);
   console.log(`  ${name}  ${size}x${size}`);
 }
+
+/* App Store icon (Apple asset best practices): 1024x1024 PNG, fully opaque,
+   square corners. Apple applies the rounded mask itself, so the radius-0 tile
+   is used; a pre-rounded one would show a dark fringe at the corners. Kept
+   outside public/ because it is the input for a native shell's icon
+   generator, not something the site serves. */
+mkdirSync("assets", { recursive: true });
+await sharp(APPLE, { density: 768 })
+  .resize(1024, 1024)
+  .flatten({ background: GROUND })
+  .removeAlpha()
+  .png({ compressionLevel: 9 })
+  .toFile("assets/icon.png");
+console.log("  assets/icon.png  1024x1024  (App Store, opaque, square)");
